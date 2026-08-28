@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-kb-sqlite"
+version = "0.1.0"
+description = "Local long-term memory MCP server backed by SQLite FTS5"
+readme = "README.md"
+authors = [{ name = "Eugene Kosyakov", email = "eukos@yandex.by" }]
+requires-python = ">=3.10"
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+]
+keywords = ["mcp", "sqlite", "fts5", "knowledge-base", "memory", "claude", "opencode", "llm", "ai"]
+dependencies = ["mcp[cli]>=2,<3", "pydantic>=2"]
+
+[project.urls]
+Homepage = "https://github.com/eukos/mcp-kb-sqlite"
+
+[project.scripts]
+mcp-kb-sqlite = "mcp_kb_sqlite.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_kb_sqlite"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
