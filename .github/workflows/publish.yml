@@ -1,0 +1,51 @@
+name: Publish to PyPI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Check version changed
+        id: version
+        run: |
+          VERSION=$(grep '^version' pyproject.toml | cut -d'"' -f2)
+          if git show HEAD~1:pyproject.toml > /dev/null 2>&1; then
+            PREV=$(git diff HEAD~1 pyproject.toml | grep '^\-version' | cut -d'"' -f2)
+          else
+            PREV="$VERSION"  # pyproject.toml is new, so this is always a version change
+          fi
+          if [ -z "$PREV" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+      - uses: astral-sh/setup-uv@v5
+        if: steps.version.outputs.changed == 'true'
+      - name: Build
+        if: steps.version.outputs.changed == 'true'
+        run: uv build
+      - name: Publish to PyPI
+        if: steps.version.outputs.changed == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Tag release
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
