@@ -23,7 +23,11 @@ jobs:
         id: version
         run: |
           VERSION=$(grep '^version' pyproject.toml | cut -d'"' -f2)
-          PREV=$(git diff HEAD~1 pyproject.toml | grep '^\-version' | cut -d'"' -f2)
+          if git show HEAD~1:pyproject.toml > /dev/null 2>&1; then
+            PREV=$(git diff HEAD~1 pyproject.toml | grep '^\-version' | cut -d'"' -f2)
+          else
+            PREV="$VERSION"  # pyproject.toml is new, so this is always a version change
+          fi
           if [ -z "$PREV" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
