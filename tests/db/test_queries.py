@@ -209,6 +209,45 @@ def test_get_relations_empty_for_unrelated_entry():
     assert queries.get_relations(1) == []
 
 
+# ---------- replace_entry ----------
+
+def test_replace_entry_replaces_single_match():
+    queries.create_entry("proj", "a", "A", None, None, "hello world")
+    result = queries.replace_entry(1, "world", "there")
+    assert result == {"id": 1, "ns": "proj", "key": "a"}
+    assert queries.get_entry(1)["data"] == "hello there"
+
+
+def test_replace_entry_not_found_raises():
+    with pytest.raises(queries.EntryNotFound) as exc:
+        queries.replace_entry(999, "a", "b")
+    assert exc.value.id == 999
+
+
+def test_replace_entry_empty_old_string_raises():
+    queries.create_entry("proj", "a", "A", None, None, "data")
+    with pytest.raises(ValueError, match="must not be empty"):
+        queries.replace_entry(1, "", "x")
+
+
+def test_replace_entry_no_match_raises():
+    queries.create_entry("proj", "a", "A", None, None, "hello world")
+    with pytest.raises(ValueError, match="not found"):
+        queries.replace_entry(1, "missing", "x")
+
+
+def test_replace_entry_multiple_matches_without_replace_all_raises():
+    queries.create_entry("proj", "a", "A", None, None, "foo foo foo")
+    with pytest.raises(ValueError, match="matches 3 times"):
+        queries.replace_entry(1, "foo", "bar")
+
+
+def test_replace_entry_replace_all_replaces_every_occurrence():
+    queries.create_entry("proj", "a", "A", None, None, "foo foo foo")
+    queries.replace_entry(1, "foo", "bar", replace_all=True)
+    assert queries.get_entry(1)["data"] == "bar bar bar"
+
+
 # ---------- delete_entry ----------
 
 def test_delete_entry_returns_true_when_deleted():

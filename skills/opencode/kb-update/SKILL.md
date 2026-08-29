@@ -9,7 +9,7 @@ description: Save learned knowledge to the local knowledge base (kb MCP) — arc
 
 Reply to the user in the language they used to ask.
 
-Save what you've learned using the `mcp-kb-sqlite` MCP server: `search`, `list`, `list_namespaces`, `get`, `save`, `relate`, `get_relations`, `delete`. Read each tool's own description for its parameters and semantics — this document covers only judgment the tools can't encode.
+Save what you've learned using the `mcp-kb-sqlite` MCP server: `search`, `list`, `list_namespaces`, `get`, `save`, `relate`, `get_relations`, `replace`, `delete`. Read each tool's own description for its parameters and semantics — this document covers only judgment the tools can't encode.
 
 1. **Decide what to store.** Rule of thumb: _"Will this help a fresh agent understand the project in 3 months?"_
    - Store: architecture decisions, non-obvious behaviors, integration patterns, gotchas.
@@ -31,6 +31,7 @@ Save what you've learned using the `mcp-kb-sqlite` MCP server: `search`, `list`,
 
 4. **Write or update** — treat the KB as a living document, not an append-only log:
    - If a matching entry exists → update it in place, sending only the fields that change.
+   - For an in-place edit to an existing entry's `data` (a status line, a fact correction, a section rewrite) prefer `replace(id, old_string, new_string)` over resending the whole field via `save()` — cheaper, and self-verifying (errors instead of silently overwriting if `old_string` doesn't match the current content).
    - If the knowledge fits better as part of an existing entry → extend that entry, don't create a new one.
    - If nothing matches → create a new entry. English always.
    - **Put multi-line content in the `data` field — schemas, code, SQL, configs, stack traces, long docs. Do not skip it to save tokens.** The indexed fields (`title`/`description`/`tags`) are for finding the entry; `data` holds the actual knowledge. (`data` is not FTS-indexed — reload `save`'s schema via ToolSearch if you're unsure of a field name, don't rely on prose here.)

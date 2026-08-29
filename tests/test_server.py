@@ -8,6 +8,7 @@ from mcp_kb_sqlite.server import (
     list,
     list_namespaces,
     relate,
+    replace,
     save,
     search,
 )
@@ -239,6 +240,36 @@ def test_get_relations_formats_outgoing_and_incoming():
         result = get_relations(1)
     assert "--> id=2" in result
     assert "<-- id=3" in result
+
+
+# ---------- replace ----------
+
+def test_replace_success():
+    with patch(
+        "mcp_kb_sqlite.server.queries.replace_entry",
+        return_value={"id": 1, "ns": "proj/a", "key": "k1"},
+    ) as m:
+        result = replace(1, "old", "new")
+    m.assert_called_once_with(1, "old", "new", False)
+    assert result == "Replaced in: proj/a/k1 (id=1)"
+
+
+def test_replace_not_found_becomes_error_message():
+    with patch(
+        "mcp_kb_sqlite.server.queries.replace_entry",
+        side_effect=queries.EntryNotFound(999),
+    ):
+        result = replace(999, "old", "new")
+    assert result == "Not found: id=999"
+
+
+def test_replace_value_error_becomes_error_message():
+    with patch(
+        "mcp_kb_sqlite.server.queries.replace_entry",
+        side_effect=ValueError("old_string not found in id=1"),
+    ):
+        result = replace(1, "old", "new")
+    assert result == "Error: old_string not found in id=1"
 
 
 # ---------- delete ----------

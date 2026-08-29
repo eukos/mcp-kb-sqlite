@@ -12,7 +12,7 @@ from mcp_kb_sqlite.db import init_db, queries
 # defined below — must run before those decorators execute.
 ArgModelBase.model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-mcp = MCPServer("mcp-kb-sqlite", instructions="Project knowledge base — search here before querying external sources; store cross-service architecture facts, investigation findings, and patterns worth preserving across sessions. Tools: search, save, get, list, relate, delete.")
+mcp = MCPServer("mcp-kb-sqlite", instructions="Project knowledge base — search here before querying external sources; store cross-service architecture facts, investigation findings, and patterns worth preserving across sessions. Tools: search, save, get, list, relate, replace, delete.")
 
 
 def _fmt_date(ts: str | None) -> str:
@@ -178,6 +178,22 @@ def get_relations(id: int) -> str:
             f"  (updated: {_fmt_date(r['updated_at'])})"
         )
     return "\n".join(lines)
+
+
+@mcp.tool()
+def replace(id: int, old_string: str, new_string: str, replace_all: bool = False) -> str:
+    """Targeted edit to an entry's `data` field without resending the whole value.
+    old_string must match exactly against the current data. Errors if not found, or if
+    it matches more than once — pass replace_all=True to replace every occurrence, or
+    include more surrounding context in old_string to disambiguate a single occurrence
+    (mirrors the Edit tool's semantics: self-verifying, no line-number tracking)."""
+    try:
+        result = queries.replace_entry(id, old_string, new_string, replace_all)
+    except queries.EntryNotFound as e:
+        return f"Not found: id={e.id}"
+    except ValueError as e:
+        return f"Error: {e}"
+    return f"Replaced in: {result['ns']}/{result['key']} (id={result['id']})"
 
 
 @mcp.tool()

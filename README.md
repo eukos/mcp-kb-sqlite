@@ -91,6 +91,7 @@ the SKILL.md text and appends whatever you typed after the command.
 | Tool                                                       | Purpose                                                       |
 | ---------------------------------------------------------- | ------------------------------------------------------------- |
 | `save(id?, ns?, key?, title?, description?, tags?, data?)` | Create or update an entry — see below                         |
+| `replace(id, old_string, new_string, replace_all=False)`   | Targeted edit to an entry's `data` — see below                |
 | `get(id, include_data=False)`                              | Fetch one entry; `include_data=True` returns the payload      |
 | `search(query, ns?, limit=10, offset=0)`                   | FTS5/BM25 over title + description + tags                     |
 | `list(ns?, limit=20, offset=0)`                            | Entries by recency, metadata only                             |
@@ -130,3 +131,16 @@ accidental full overwrite isn't possible:
 ```
 Error: project/db/schema already exists (id=42) — pass id=42 to update it
 ```
+
+### `replace`: targeted edits without resending `data`
+
+For a small change to an existing entry's `data`, `replace` avoids resending the whole field through `save`:
+
+```python
+replace(id=42, old_string="old fact", new_string="corrected fact")
+```
+
+`old_string` must match exactly. It's an error if the text isn't found, or if it matches more than once —
+pass `replace_all=True` to replace every occurrence, or include more surrounding context in `old_string` to
+disambiguate a single occurrence. This mirrors editor-style find/replace: self-verifying, so a stale or
+ambiguous call fails loudly instead of silently writing to the wrong content.

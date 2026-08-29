@@ -214,6 +214,33 @@ def get_relations(id: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def replace_entry(id: int, old_string: str, new_string: str, replace_all: bool = False) -> dict:
+    """Targeted substring replacement within an entry's `data` field.
+    Raises EntryNotFound if id doesn't exist. Raises ValueError if old_string is empty,
+    not found in data, or matches more than once and replace_all is False.
+    Returns {'id', 'ns', 'key'}."""
+    if not old_string:
+        raise ValueError("old_string must not be empty")
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, ns, key, data FROM entries WHERE id = ?", (id,)
+        ).fetchone()
+        if not row:
+            raise EntryNotFound(id)
+        data = row["data"] or ""
+        count = data.count(old_string)
+        if count == 0:
+            raise ValueError(f"old_string not found in id={id}")
+        if count > 1 and not replace_all:
+            raise ValueError(
+                f"old_string matches {count} times in id={id} — pass replace_all=True "
+                "or include more surrounding context to match a single occurrence"
+            )
+        new_data = data.replace(old_string, new_string, -1 if replace_all else 1)
+        conn.execute("UPDATE entries SET data = ? WHERE id = ?", (new_data, id))
+    return {"id": id, "ns": row["ns"], "key": row["key"]}
+
+
 def delete_entry(id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM entries WHERE id = ?", (id,))
