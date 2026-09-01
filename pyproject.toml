@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-kb-sqlite"
-version = "0.1.0"
+version = "0.2.0rc1"
 description = "Local long-term memory MCP server backed by SQLite FTS5"
 readme = "README.md"
 authors = [{ name = "Eugene Kosyakov", email = "eukos@yandex.by" }]

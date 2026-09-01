@@ -124,6 +124,22 @@ def test_search_entries_respects_limit_offset():
     assert len(rows) == 1
 
 
+def test_search_entries_matches_data_field():
+    queries.create_entry("proj/a", "k1", "Title", "desc", None, "unique_payload_term")
+    rows = queries.search_entries("unique_payload_term", None, 10, 0)
+    assert [r["id"] for r in rows] == [1]
+
+
+def test_replace_entry_keeps_fts_in_sync():
+    queries.create_entry("proj/a", "k1", "Title", None, None, "before_term")
+    assert [r["id"] for r in queries.search_entries("before_term", None, 10, 0)] == [1]
+
+    queries.replace_entry(1, "before_term", "after_term")
+
+    assert queries.search_entries("before_term", None, 10, 0) == []
+    assert [r["id"] for r in queries.search_entries("after_term", None, 10, 0)] == [1]
+
+
 # ---------- list_entries ----------
 
 def test_list_entries_returns_all_and_total():

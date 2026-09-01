@@ -93,4 +93,53 @@ def test_init_db_is_idempotent(monkeypatch, tmp_path):
         version = conn.execute(
             "SELECT value FROM db_meta WHERE key='schema_version'"
         ).fetchone()["value"]
-    assert version == "1"
+    assert version == "2"
+
+
+def test_init_db_creates_no_backup_on_fresh_install(monkeypatch, tmp_path):
+    db_path = tmp_path / "kb.db"
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    init_db()
+    assert list(tmp_path.glob("kb.db.bak-*")) == []
+
+
+def test_init_db_backs_up_existing_db_with_pending_migration(monkeypatch, tmp_path):
+    from mcp_kb_sqlite.db.migrations import _migrate_v0
+
+    db_path = tmp_path / "kb.db"
+    monkeypatch.setenv("DB_PATH", str(db_path))
+
+    # simulate a db that already ran v0 but predates v1 (pending migration)
+    with get_conn() as conn:
+        _migrate_v0(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO db_meta(key, value) VALUES ('schema_version', '1')"
+        )
+        conn.execute(
+            "INSERT INTO entries(ns, key, title) VALUES ('t', 'k', 'Title')"
+        )
+
+    init_db()
+
+    backups = list(tmp_path.glob("kb.db.bak-*"))
+    assert len(backups) == 1
+    with get_conn() as conn:
+        version = conn.execute(
+            "SELECT value FROM db_meta WHERE key='schema_version'"
+        ).fetchone()["value"]
+    assert version == "2"
+
+    # the backup must be a standalone, restorable snapshot of the pre-migration state
+    import sqlite3
+
+    bak_conn = sqlite3.connect(backups[0])
+    bak_conn.row_factory = sqlite3.Row
+    bak_version = bak_conn.execute(
+        "SELECT value FROM db_meta WHERE key='schema_version'"
+    ).fetchone()["value"]
+    bak_title = bak_conn.execute(
+        "SELECT title FROM entries WHERE ns='t' AND key='k'"
+    ).fetchone()["title"]
+    bak_conn.close()
+    assert bak_version == "1"
+    assert bak_title == "Title"

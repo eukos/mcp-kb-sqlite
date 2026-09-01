@@ -1,9 +1,10 @@
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
-from mcp_kb_sqlite.db.migrations import run_migrations
+from mcp_kb_sqlite.db.migrations import needs_backup, run_migrations
 
 _db_path: Path | None = None
 
@@ -33,6 +34,22 @@ def get_conn():
         conn.close()
 
 
+def _backup(conn: sqlite3.Connection) -> Path:
+    """Snapshot the db file before an upgrade, via sqlite3's backup API so an
+    in-progress WAL is captured consistently rather than copied mid-write."""
+    path = get_db_path()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    bak_path = path.with_name(f"{path.name}.bak-{stamp}")
+    bak_conn = sqlite3.connect(bak_path)
+    try:
+        conn.backup(bak_conn)
+    finally:
+        bak_conn.close()
+    return bak_path
+
+
 def init_db() -> None:
     with get_conn() as conn:
+        if needs_backup(conn):
+            _backup(conn)
         run_migrations(conn)

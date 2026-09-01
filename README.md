@@ -93,7 +93,7 @@ the SKILL.md text and appends whatever you typed after the command.
 | `save(id?, ns?, key?, title?, description?, tags?, data?)` | Create or update an entry — see below                         |
 | `replace(id, old_string, new_string, replace_all=False)`   | Targeted edit to an entry's `data` — see below                |
 | `get(id, include_data=False)`                              | Fetch one entry; `include_data=True` returns the payload      |
-| `search(query, ns?, limit=10, offset=0)`                   | FTS5/BM25 over title + description + tags                     |
+| `search(query, ns?, limit=10, offset=0)`                   | FTS5/BM25 over title + description + tags + data              |
 | `list(ns?, limit=20, offset=0)`                            | Entries by recency, metadata only                             |
 | `list_namespaces()`                                        | Namespaces with entry counts and last-updated date            |
 | `relate(from_id, to_id, rel?)`                             | Link two entries; omit `rel` to remove all links between them |
@@ -103,8 +103,8 @@ the SKILL.md text and appends whatever you typed after the command.
 Entries are addressed by `ns` (namespace, e.g. `project/subsystem`) plus `key` (a slug unique within the
 namespace). `ns` filters are prefix matches, so `ns="project"` covers every subsystem under it.
 
-Only `title`, `description`, and `tags` are FTS-indexed. `data` is the payload — put schemas, code, configs
-and traces there, and make sure anything you need to _find_ also appears in one of the indexed fields.
+`title`, `description`, `tags`, and `data` are all FTS-indexed — `search` matches against the full
+entry, including its payload, not just the summary fields.
 
 ### `save`: create vs. update
 

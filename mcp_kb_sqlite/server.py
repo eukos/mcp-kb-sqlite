@@ -36,10 +36,9 @@ def save(
     CREATE — omit id and pass ns, key, and title (all three required). Errors if ns+key is taken;
     the error reports the existing id so you can re-issue it as an update.
     ns = namespace like 'project/subsystem', key = unique slug within ns.
-    title: short label (FTS-indexed). description: search-hint field — write the keywords/synonyms
-    a user would actually query here, not just a prose summary (FTS-indexed).
-    tags: 3-5 keywords (FTS-indexed). data: large payload, NOT FTS-indexed — anything you want
-    findable must appear in title, description, or tags instead. Retrieved via get()."""
+    title: short label. description: search-hint field — write the keywords/synonyms a user
+    would actually query here, not just a prose summary. tags: 3-5 keywords. data: large payload,
+    retrieved via get(). FTS-indexed fields are title, description, tags, and data."""
     try:
         if id is None:
             result = queries.create_entry(ns, key, title, description, tags, data)
@@ -82,7 +81,7 @@ def search(
     limit: int = 10,
     offset: int = 0,
 ) -> str:
-    """Full-text search over entries using FTS5/BM25. Searches title, description, and tags.
+    """Full-text search over entries using FTS5/BM25. Searches title, description, tags, and data.
     Optionally filter by ns prefix. FTS5 operators AND, OR, NOT work as-is. Wrap query in double quotes for strict phrase search — special characters (dots, hyphens, etc.) become literals inside quotes, e.g. "127.0.0.1"."""
     limit = min(limit, 100)
     rows = queries.search_entries(query, ns, limit, offset)
