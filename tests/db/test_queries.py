@@ -225,6 +225,51 @@ def test_get_relations_empty_for_unrelated_entry():
     assert queries.get_relations(1) == []
 
 
+def test_get_recent_relations_orders_by_relation_added_desc():
+    # ids: a=1, x=2, y=3. Add the relation to the higher-id entry (y=3) FIRST and the
+    # lower-id one (x=2) LAST so rowid (addition) order is y-then-x while e.id order is
+    # y(3) > x(2) — the two orderings diverge and only the addition order is correct.
+    queries.create_entry("proj", "a", "A", None, None, None)
+    queries.create_entry("proj", "x", "X", None, None, None)
+    queries.create_entry("proj", "y", "Y", None, None, None)
+    queries.add_relation(1, 3, "see_also")
+    queries.add_relation(1, 2, "see_also")
+    rows, total = queries.get_recent_relations(1, 10)
+    assert total == 2
+    assert [r["to_id"] for r in rows] == [2, 3]
+
+
+def test_get_recent_relations_respects_limit_but_reports_full_total():
+    queries.create_entry("proj", "a", "A", None, None, None)
+    for i in range(2, 12):
+        queries.create_entry("proj", f"e{i}", f"E{i}", None, None, None)
+    for other in range(2, 12):
+        queries.add_relation(1, other, "see_also")
+    rows, total = queries.get_recent_relations(1, 5)
+    assert total == 10
+    assert len(rows) == 5
+    assert [r["to_id"] for r in rows] == [11, 10, 9, 8, 7]
+
+
+def test_get_recent_relations_includes_incoming_direction():
+    queries.create_entry("proj", "a", "A", None, None, None)
+    queries.create_entry("proj", "b", "B", None, None, None)
+    queries.create_entry("proj", "c", "C", None, None, None)
+    queries.add_relation(2, 1, "part_of")
+    queries.add_relation(3, 1, "part_of")
+    rows, total = queries.get_recent_relations(1, 10)
+    assert total == 2
+    assert [r["from_id"] for r in rows] == [3, 2]
+    assert all(r["direction"] == "incoming" for r in rows)
+
+
+def test_get_recent_relations_empty_for_unrelated_entry():
+    queries.create_entry("proj", "a", "A", None, None, None)
+    rows, total = queries.get_recent_relations(1, 10)
+    assert rows == []
+    assert total == 0
+
+
 # ---------- replace_entry ----------
 
 def test_replace_entry_replaces_single_match():

@@ -19,6 +19,21 @@ def _fmt_date(ts: str | None) -> str:
     return ts[:10] if ts else "?"
 
 
+RECENT_RELATION_LIMIT = 10
+
+
+def _relation_lines(rows) -> str:
+    lines = []
+    for r in rows:
+        arrow = "-->" if r["direction"] == "outgoing" else "<--"
+        other_id = r["to_id"] if r["direction"] == "outgoing" else r["from_id"]
+        lines.append(
+            f"  [{r['rel']}] {arrow} id={other_id} | {r['ns']}/{r['key']} — {r['title']}"
+            f"  (updated: {_fmt_date(r['updated_at'])})"
+        )
+    return "\n".join(lines)
+
+
 @mcp.tool()
 def save(
     id: int | None = None,
@@ -56,22 +71,29 @@ def save(
 
 @mcp.tool()
 def get(id: int, include_data: bool = False) -> str:
-    """Fetch a KB entry by id. Returns title, description, tags, and dates by default.
-    Pass include_data=True to also retrieve the data payload."""
+    """Fetch a KB entry by id. Returns title, description, tags, and dates by default;
+    pass include_data=True to also get the data payload. Also lists related entries."""
     row = queries.get_entry(id)
     if not row:
         return f"Not found: id={id}"
     tags = json.loads(row["tags"]) if row["tags"] else []
     tags_str = f"  tags={tags}" if tags else ""
     desc_str = f"\n{row['description']}" if row["description"] else ""
-    header = (
+    out = (
         f"id={row['id']} | {row['ns']}/{row['key']}{tags_str}"
         f"  created: {_fmt_date(row['created_at'])}  updated: {_fmt_date(row['updated_at'])}\n"
         f"{row['title']}{desc_str}"
     )
+    rels, total = queries.get_recent_relations(id, RECENT_RELATION_LIMIT)
+    if rels:
+        if total > len(rels):
+            out += f"\nrelations (last {len(rels)} of {total} — call get_relations for all):"
+        else:
+            out += f"\nrelations ({total}):"
+        out += "\n" + _relation_lines(rels)
     if include_data and row["data"]:
-        return f"{header}\n\n{row['data']}"
-    return header
+        out += f"\n\n--- data ---\n{row['data']}"
+    return out
 
 
 @mcp.tool()
@@ -168,15 +190,7 @@ def get_relations(id: int) -> str:
     if not rows:
         return f"No relations found for id={id}"
 
-    lines = [f"Relations for id={id}:"]
-    for r in rows:
-        arrow = "-->" if r["direction"] == "outgoing" else "<--"
-        other_id = r["to_id"] if r["direction"] == "outgoing" else r["from_id"]
-        lines.append(
-            f"  [{r['rel']}] {arrow} id={other_id} | {r['ns']}/{r['key']} — {r['title']}"
-            f"  (updated: {_fmt_date(r['updated_at'])})"
-        )
-    return "\n".join(lines)
+    return f"Relations for id={id}:\n{_relation_lines(rows)}"
 
 
 @mcp.tool()

@@ -32,7 +32,7 @@ Save what you've learned using the `mcp-kb-sqlite` MCP server: `search`, `list`,
 
 4. **Write or update** — treat the KB as a living document, not an append-only log:
    - If a matching entry exists → update it in place, sending only the fields that change.
-   - For an in-place edit to an existing entry's `data` (a status line, a fact correction, a section rewrite) prefer `replace(id, old_string, new_string)` over resending the whole field via `save()` — cheaper, and self-verifying (errors instead of silently overwriting if `old_string` doesn't match the current content).
+   - For an in-place edit to an existing entry's `data` (a status line, a fact correction, a section rewrite) prefer `replace(id, old_string, new_string)` over resending the whole field via `save()` — cheaper, and self-verifying (errors instead of silently overwriting if `old_string` doesn't match the current content). Keep the whole entry internally consistent, not just the span you touched.
    - If the knowledge fits better as part of an existing entry → extend that entry, don't create a new one.
    - If nothing matches → create a new entry. English always.
    - **Put multi-line content in the `data` field — schemas, code, SQL, configs, stack traces, long docs. Do not skip it to save tokens.** `title`/`description`/`tags` are what a search snippet shows and what should carry the terms someone would actually query; `data` holds the full knowledge and is FTS-indexed too, but weigh it lower when picking words for the summary fields — a snippet hit is what gets an entry noticed. (Reload `save`'s schema via ToolSearch if you're unsure of a field name, don't rely on prose here.)
