@@ -12,11 +12,26 @@ from mcp_kb_sqlite.db import init_db, queries
 # defined below — must run before those decorators execute.
 ArgModelBase.model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-mcp = MCPServer("mcp-kb-sqlite", instructions="Project knowledge base — search here before querying external sources; store cross-service architecture facts, investigation findings, and patterns worth preserving across sessions. Tools: search, save, get, list, relate, delete.")
+mcp = MCPServer("mcp-kb-sqlite", instructions="Project knowledge base — search here before querying external sources; store cross-service architecture facts, investigation findings, and patterns worth preserving across sessions. Tools: search, save, get, list, relate, replace, delete.")
 
 
 def _fmt_date(ts: str | None) -> str:
     return ts[:10] if ts else "?"
+
+
+RECENT_RELATION_LIMIT = 10
+
+
+def _relation_lines(rows) -> str:
+    lines = []
+    for r in rows:
+        arrow = "-->" if r["direction"] == "outgoing" else "<--"
+        other_id = r["to_id"] if r["direction"] == "outgoing" else r["from_id"]
+        lines.append(
+            f"  [{r['rel']}] {arrow} id={other_id} | {r['ns']}/{r['key']} — {r['title']}"
+            f"  (updated: {_fmt_date(r['updated_at'])})"
+        )
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -36,10 +51,9 @@ def save(
     CREATE — omit id and pass ns, key, and title (all three required). Errors if ns+key is taken;
     the error reports the existing id so you can re-issue it as an update.
     ns = namespace like 'project/subsystem', key = unique slug within ns.
-    title: short label (FTS-indexed). description: search-hint field — write the keywords/synonyms
-    a user would actually query here, not just a prose summary (FTS-indexed).
-    tags: 3-5 keywords (FTS-indexed). data: large payload, NOT FTS-indexed — anything you want
-    findable must appear in title, description, or tags instead. Retrieved via get()."""
+    title: short label. description: search-hint field — write the keywords/synonyms a user
+    would actually query here, not just a prose summary. tags: 3-5 keywords. data: large payload,
+    retrieved via get(). FTS-indexed fields are title, description, tags, and data."""
     try:
         if id is None:
             result = queries.create_entry(ns, key, title, description, tags, data)
@@ -57,22 +71,29 @@ def save(
 
 @mcp.tool()
 def get(id: int, include_data: bool = False) -> str:
-    """Fetch a KB entry by id. Returns title, description, tags, and dates by default.
-    Pass include_data=True to also retrieve the data payload."""
+    """Fetch a KB entry by id. Returns title, description, tags, and dates by default;
+    pass include_data=True to also get the data payload. Also lists related entries."""
     row = queries.get_entry(id)
     if not row:
         return f"Not found: id={id}"
     tags = json.loads(row["tags"]) if row["tags"] else []
     tags_str = f"  tags={tags}" if tags else ""
     desc_str = f"\n{row['description']}" if row["description"] else ""
-    header = (
+    out = (
         f"id={row['id']} | {row['ns']}/{row['key']}{tags_str}"
         f"  created: {_fmt_date(row['created_at'])}  updated: {_fmt_date(row['updated_at'])}\n"
         f"{row['title']}{desc_str}"
     )
+    rels, total = queries.get_recent_relations(id, RECENT_RELATION_LIMIT)
+    if rels:
+        if total > len(rels):
+            out += f"\nrelations (last {len(rels)} of {total} — call get_relations for all):"
+        else:
+            out += f"\nrelations ({total}):"
+        out += "\n" + _relation_lines(rels)
     if include_data and row["data"]:
-        return f"{header}\n\n{row['data']}"
-    return header
+        out += f"\n\n--- data ---\n{row['data']}"
+    return out
 
 
 @mcp.tool()
@@ -82,7 +103,7 @@ def search(
     limit: int = 10,
     offset: int = 0,
 ) -> str:
-    """Full-text search over entries using FTS5/BM25. Searches title, description, and tags.
+    """Full-text search over entries using FTS5/BM25. Searches title, description, tags, and data.
     Optionally filter by ns prefix. FTS5 operators AND, OR, NOT work as-is. Wrap query in double quotes for strict phrase search — special characters (dots, hyphens, etc.) become literals inside quotes, e.g. "127.0.0.1"."""
     limit = min(limit, 100)
     rows = queries.search_entries(query, ns, limit, offset)
@@ -169,15 +190,23 @@ def get_relations(id: int) -> str:
     if not rows:
         return f"No relations found for id={id}"
 
-    lines = [f"Relations for id={id}:"]
-    for r in rows:
-        arrow = "-->" if r["direction"] == "outgoing" else "<--"
-        other_id = r["to_id"] if r["direction"] == "outgoing" else r["from_id"]
-        lines.append(
-            f"  [{r['rel']}] {arrow} id={other_id} | {r['ns']}/{r['key']} — {r['title']}"
-            f"  (updated: {_fmt_date(r['updated_at'])})"
-        )
-    return "\n".join(lines)
+    return f"Relations for id={id}:\n{_relation_lines(rows)}"
+
+
+@mcp.tool()
+def replace(id: int, old_string: str, new_string: str, replace_all: bool = False) -> str:
+    """Targeted edit to an entry's `data` field without resending the whole value.
+    old_string must match exactly against the current data. Errors if not found, or if
+    it matches more than once — pass replace_all=True to replace every occurrence, or
+    include more surrounding context in old_string to disambiguate a single occurrence
+    (mirrors the Edit tool's semantics: self-verifying, no line-number tracking)."""
+    try:
+        result = queries.replace_entry(id, old_string, new_string, replace_all)
+    except queries.EntryNotFound as e:
+        return f"Not found: id={e.id}"
+    except ValueError as e:
+        return f"Error: {e}"
+    return f"Replaced in: {result['ns']}/{result['key']} (id={result['id']})"
 
 
 @mcp.tool()

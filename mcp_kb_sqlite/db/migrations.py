@@ -49,7 +49,42 @@ def _migrate_v0(conn) -> None:
     """)
 
 
-MIGRATIONS = [_migrate_v0]
+def _migrate_v1(conn) -> None:
+    """Add `data` to the FTS index — entry payloads become searchable, not just
+    title/description/tags. FTS5 columns can't be altered in place, so the virtual
+    table is dropped and recreated, then backfilled via the 'rebuild' command."""
+    conn.executescript("""
+        DROP TRIGGER IF EXISTS entries_ai;
+        DROP TRIGGER IF EXISTS entries_ad;
+        DROP TRIGGER IF EXISTS entries_au;
+        DROP TABLE IF EXISTS entries_fts;
+
+        CREATE VIRTUAL TABLE entries_fts
+            USING fts5(title, description, tags, data, content='entries', content_rowid='id');
+
+        INSERT INTO entries_fts(entries_fts) VALUES ('rebuild');
+
+        CREATE TRIGGER entries_ai AFTER INSERT ON entries BEGIN
+            INSERT INTO entries_fts(rowid, title, description, tags, data)
+            VALUES (new.id, new.title, new.description, new.tags, new.data);
+        END;
+
+        CREATE TRIGGER entries_ad AFTER DELETE ON entries BEGIN
+            INSERT INTO entries_fts(entries_fts, rowid, title, description, tags, data)
+            VALUES ('delete', old.id, old.title, old.description, old.tags, old.data);
+        END;
+
+        CREATE TRIGGER entries_au AFTER UPDATE ON entries BEGIN
+            INSERT INTO entries_fts(entries_fts, rowid, title, description, tags, data)
+            VALUES ('delete', old.id, old.title, old.description, old.tags, old.data);
+            INSERT INTO entries_fts(rowid, title, description, tags, data)
+            VALUES (new.id, new.title, new.description, new.tags, new.data);
+            UPDATE entries SET updated_at = CURRENT_TIMESTAMP WHERE id = new.id;
+        END;
+    """)
+
+
+MIGRATIONS = [_migrate_v0, _migrate_v1]
 
 
 def _get_schema_version(conn) -> int:
@@ -66,6 +101,13 @@ def _set_schema_version(conn, version: int) -> None:
         "INSERT OR REPLACE INTO db_meta(key, value) VALUES ('schema_version', ?)",
         (str(version),),
     )
+
+
+def needs_backup(conn) -> bool:
+    """True only when an existing (already-versioned) db has pending migrations —
+    never for a fresh install, which has nothing worth backing up yet."""
+    version = _get_schema_version(conn)
+    return 0 < version < len(MIGRATIONS)
 
 
 def run_migrations(conn) -> None:

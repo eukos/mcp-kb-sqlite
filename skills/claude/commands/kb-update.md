@@ -10,7 +10,7 @@ $ARGUMENTS
 
 Reply to the user in the language they used to ask.
 
-Save what you've learned using the `mcp-kb-sqlite` MCP server: `search`, `list`, `list_namespaces`, `get`, `save`, `relate`, `get_relations`, `delete`. Read each tool's own description for its parameters and semantics — this document covers only judgment the tools can't encode.
+Save what you've learned using the `mcp-kb-sqlite` MCP server: `search`, `list`, `list_namespaces`, `get`, `save`, `relate`, `get_relations`, `replace`, `delete`. Read each tool's own description for its parameters and semantics — this document covers only judgment the tools can't encode.
 
 1. **Decide what to store.** Rule of thumb: _"Will this help a fresh agent understand the project in 3 months?"_
    - Store: architecture decisions, non-obvious behaviors, integration patterns, gotchas.
@@ -32,10 +32,11 @@ Save what you've learned using the `mcp-kb-sqlite` MCP server: `search`, `list`,
 
 4. **Write or update** — treat the KB as a living document, not an append-only log:
    - If a matching entry exists → update it in place, sending only the fields that change.
+   - For an in-place edit to an existing entry's `data` (a status line, a fact correction, a section rewrite) prefer `replace(id, old_string, new_string)` over resending the whole field via `save()` — cheaper, and self-verifying (errors instead of silently overwriting if `old_string` doesn't match the current content). Keep the whole entry internally consistent, not just the span you touched.
    - If the knowledge fits better as part of an existing entry → extend that entry, don't create a new one.
    - If nothing matches → create a new entry. English always.
-   - **Put multi-line content in the `data` field — schemas, code, SQL, configs, stack traces, long docs. Do not skip it to save tokens.** The indexed fields (`title`/`description`/`tags`) are for finding the entry; `data` holds the actual knowledge. (`data` is not FTS-indexed — reload `save`'s schema via ToolSearch if you're unsure of a field name, don't rely on prose here.)
-   - **If the repo already documents it (`README.md`, `docs/`, ADRs), link to it — don't copy it in.** Put the file path plus a short summary in `data` instead of the document's contents. The doc stays canonical and maintained where it lives; the entry's job is to make it findable, since only the indexed fields drive search. Write a real summary rather than a bare path, so the entry still says something if the file moves.
+   - **Put multi-line content in the `data` field — schemas, code, SQL, configs, stack traces, long docs. Do not skip it to save tokens.** `title`/`description`/`tags` are what a search snippet shows and what should carry the terms someone would actually query; `data` holds the full knowledge and is FTS-indexed too, but weigh it lower when picking words for the summary fields — a snippet hit is what gets an entry noticed. (Reload `save`'s schema via ToolSearch if you're unsure of a field name, don't rely on prose here.)
+   - **If the repo already documents it (`README.md`, `docs/`, ADRs), link to it — don't copy it in.** Put the file path plus a short summary in `data` instead of the document's contents. The doc stays canonical and maintained where it lives; the entry's job is to make it findable and point there, not to duplicate it. Write a real summary rather than a bare path, so the entry still says something if the file moves.
    - Being told the entry already exists means step 3 missed a duplicate — re-read that entry and update it, don't work around the error.
    - Mark time-sensitive facts `Last verified: YYYY-MM-DD`; uncertain ones `[needs verification]`.
 

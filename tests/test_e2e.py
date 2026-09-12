@@ -17,6 +17,7 @@ from mcp_kb_sqlite.server import (
     list,
     list_namespaces,
     relate,
+    replace,
     save,
     search,
 )
@@ -83,9 +84,11 @@ def test_full_lifecycle():
     assert "auth-flow" not in frontend_hits
 
     # 9. get() without include_data omits the payload; with it, includes it.
+    #    No relations yet, so no relations block either.
     brief = get(1)
     assert "detailed design notes" not in brief
     assert "Auth flow overview" in brief
+    assert "relations" not in brief
 
     full = get(1, include_data=True)
     assert "detailed design notes" in full
@@ -102,6 +105,11 @@ def test_full_lifecycle():
     linked = relate(1, 2, rel="see_also")
     assert linked == "Related 1 --[see_also]--> 2"
 
+    # 12b. get() now carries a relations block (1 link, total=1, under the cap).
+    linked_get = get(1)
+    assert "relations (1):" in linked_get
+    assert "[see_also] --> id=2" in linked_get
+
     # 13. get_relations() shows both directions from either side.
     from_1 = get_relations(1)
     assert "[see_also] --> id=2" in from_1
@@ -111,17 +119,27 @@ def test_full_lifecycle():
     # 14. relate() to a nonexistent id fails cleanly, no partial state.
     assert relate(1, 999) == "Not found: id=999"
 
-    # 15. Unrelate removes the link in both directions.
+    # 15. Unrelate removes the link in both directions; get() drops the relations block.
     unlinked = relate(1, 2, rel=None)
     assert unlinked == "Unrelated 1 <--> 2 (1 removed)"
     assert get_relations(1) == "No relations found for id=1"
+    assert "relations" not in get(1)
 
-    # 16. delete() removes an entry; a second delete reports not found.
+    # 16. replace() edits data in place without resending the whole field.
+    replaced = replace(1, "detailed design notes", "detailed design notes, revised")
+    assert replaced == "Replaced in: proj/backend/auth-flow (id=1)"
+    assert "revised" in get(1, include_data=True)
+
+    # 16b. replace() on a missing old_string, and on an unmatched id, fail cleanly.
+    assert replace(1, "nonexistent text", "x") == "Error: old_string not found in id=1"
+    assert replace(999, "a", "b") == "Not found: id=999"
+
+    # 17. delete() removes an entry; a second delete reports not found.
     assert delete(2) == "Deleted id=2"
     assert delete(2) == "Not found: id=2"
     assert get(2) == "Not found: id=2"
 
-    # 17. Final state: only entry 1 remains.
+    # 18. Final state: only entry 1 remains.
     final_listing = list()
     assert "auth-flow" in final_listing
     assert "auth-ui" not in final_listing

@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from mcp_kb_sqlite.db.migrations import MIGRATIONS, run_migrations
+from mcp_kb_sqlite.db.migrations import MIGRATIONS, _migrate_v0, run_migrations
 
 
 @pytest.fixture
@@ -125,3 +125,41 @@ def test_get_schema_version_bootstraps_at_zero_on_fresh_db(conn):
     from mcp_kb_sqlite.db.migrations import _get_schema_version
 
     assert _get_schema_version(conn) == 0
+
+
+def test_search_matches_data_after_v1_migration(conn):
+    run_migrations(conn)
+    cur = conn.execute(
+        "INSERT INTO entries(ns, key, title, data) VALUES ('t', 'k', 'Title', 'needle') "
+        "RETURNING id"
+    )
+    id_ = cur.fetchone()["id"]
+    assert conn.execute(
+        "SELECT rowid FROM entries_fts WHERE entries_fts MATCH 'needle'"
+    ).fetchone()["rowid"] == id_
+
+
+# ---------- needs_backup ----------
+
+def test_needs_backup_false_on_fresh_db(conn):
+    from mcp_kb_sqlite.db.migrations import needs_backup
+
+    assert needs_backup(conn) is False
+
+
+def test_needs_backup_false_once_fully_migrated(conn):
+    from mcp_kb_sqlite.db.migrations import needs_backup
+
+    run_migrations(conn)
+    assert needs_backup(conn) is False
+
+
+def test_needs_backup_true_for_existing_db_with_pending_migration(conn):
+    from mcp_kb_sqlite.db.migrations import _set_schema_version, needs_backup
+
+    _migrate_v0(conn)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS db_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    _set_schema_version(conn, 1)  # simulate a db stamped at the pre-v1 version
+    assert needs_backup(conn) is True

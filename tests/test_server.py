@@ -8,6 +8,7 @@ from mcp_kb_sqlite.server import (
     list,
     list_namespaces,
     relate,
+    replace,
     save,
     search,
 )
@@ -99,13 +100,17 @@ def test_get_not_found():
         assert get(999) == "Not found: id=999"
 
 
+_ROW = {
+    "id": 1, "ns": "proj/a", "key": "k1", "title": "Title",
+    "description": "Desc", "tags": '["x", "y"]', "data": "payload",
+    "created_at": "2026-08-28 00:00:00", "updated_at": "2026-08-28 00:00:00",
+}
+
+
 def test_get_formats_row_without_data_by_default():
-    row = {
-        "id": 1, "ns": "proj/a", "key": "k1", "title": "Title",
-        "description": "Desc", "tags": '["x", "y"]', "data": "payload",
-        "created_at": "2026-08-28 00:00:00", "updated_at": "2026-08-28 00:00:00",
-    }
-    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=row):
+    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=_ROW), patch(
+        "mcp_kb_sqlite.server.queries.get_recent_relations", return_value=([], 0)
+    ):
         result = get(1)
     assert "payload" not in result
     assert "tags=['x', 'y']" in result
@@ -113,14 +118,60 @@ def test_get_formats_row_without_data_by_default():
 
 
 def test_get_includes_data_when_requested():
-    row = {
-        "id": 1, "ns": "proj/a", "key": "k1", "title": "Title",
-        "description": None, "tags": None, "data": "payload",
-        "created_at": "2026-08-28 00:00:00", "updated_at": "2026-08-28 00:00:00",
-    }
-    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=row):
+    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=_ROW), patch(
+        "mcp_kb_sqlite.server.queries.get_recent_relations", return_value=([], 0)
+    ):
         result = get(1, include_data=True)
     assert "payload" in result
+
+
+def test_get_omits_relations_block_when_none():
+    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=_ROW), patch(
+        "mcp_kb_sqlite.server.queries.get_recent_relations", return_value=([], 0)
+    ):
+        result = get(1)
+    assert "relations" not in result
+
+
+_REL_ROWS = [
+    {"rel": "see_also", "from_id": 1, "to_id": 3, "ns": "n", "key": "b",
+     "title": "B", "updated_at": "2026-08-28", "direction": "outgoing"},
+    {"rel": "part_of", "from_id": 2, "to_id": 1, "ns": "n", "key": "c",
+     "title": "C", "updated_at": "2026-08-27", "direction": "incoming"},
+]
+
+
+def test_get_shows_relations_block_with_count():
+    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=_ROW), patch(
+        "mcp_kb_sqlite.server.queries.get_recent_relations", return_value=(_REL_ROWS, 2)
+    ):
+        result = get(1)
+    assert "relations (2):" in result
+    assert "--> id=3 | n/b — B" in result
+    assert "<-- id=2 | n/c — C" in result
+
+
+def test_get_caps_relations_and_hints_total():
+    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=_ROW), patch(
+        "mcp_kb_sqlite.server.queries.get_recent_relations",
+        return_value=(_REL_ROWS * 5, 31),
+    ) as m:
+        result = get(1)
+    m.assert_called_once_with(1, 10)
+    assert "relations (last 10 of 31 — call get_relations for all):" in result
+
+
+def test_get_places_relations_before_data_behind_a_marker():
+    # With include_data=True, relations must sit above a "--- data ---" marker, not
+    # dangling after the (possibly huge) payload where it could be mistaken for content.
+    with patch("mcp_kb_sqlite.server.queries.get_entry", return_value=_ROW), patch(
+        "mcp_kb_sqlite.server.queries.get_recent_relations", return_value=(_REL_ROWS, 2)
+    ):
+        result = get(1, include_data=True)
+    relations_pos = result.index("relations (2):")
+    marker_pos = result.index("--- data ---")
+    payload_pos = result.index("payload")
+    assert relations_pos < marker_pos < payload_pos
 
 
 # ---------- search ----------
@@ -239,6 +290,36 @@ def test_get_relations_formats_outgoing_and_incoming():
         result = get_relations(1)
     assert "--> id=2" in result
     assert "<-- id=3" in result
+
+
+# ---------- replace ----------
+
+def test_replace_success():
+    with patch(
+        "mcp_kb_sqlite.server.queries.replace_entry",
+        return_value={"id": 1, "ns": "proj/a", "key": "k1"},
+    ) as m:
+        result = replace(1, "old", "new")
+    m.assert_called_once_with(1, "old", "new", False)
+    assert result == "Replaced in: proj/a/k1 (id=1)"
+
+
+def test_replace_not_found_becomes_error_message():
+    with patch(
+        "mcp_kb_sqlite.server.queries.replace_entry",
+        side_effect=queries.EntryNotFound(999),
+    ):
+        result = replace(999, "old", "new")
+    assert result == "Not found: id=999"
+
+
+def test_replace_value_error_becomes_error_message():
+    with patch(
+        "mcp_kb_sqlite.server.queries.replace_entry",
+        side_effect=ValueError("old_string not found in id=1"),
+    ):
+        result = replace(1, "old", "new")
+    assert result == "Error: old_string not found in id=1"
 
 
 # ---------- delete ----------

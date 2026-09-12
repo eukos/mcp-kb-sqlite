@@ -198,20 +198,74 @@ def remove_relation(from_id: int, to_id: int) -> int:
         return cur.rowcount
 
 
-def get_relations(id: int) -> list[sqlite3.Row]:
+def _relations_rows(id: int, limit: int | None = None) -> list[sqlite3.Row]:
+    """Relations touching `id`, most recently added first.
+
+    Ordered by the `relations` table's own rowid, descending — this table has no
+    single-column INTEGER PRIMARY KEY (its PK is the composite (from_id, to_id, rel)),
+    so SQLite keeps an ordinary hidden rowid that it hands out as max(rowid)+1 on every
+    INSERT OR IGNORE. We never delete-and-reinsert a relation, and this codebase never
+    runs VACUUM (the only migration that rebuilds a table targets entries_fts, not
+    relations), so that rowid stays a reliable proxy for insertion order in practice —
+    even though SQLite doesn't document rowid ordering as a general guarantee.
+    """
     with get_conn() as conn:
-        return conn.execute(
-            """
+        sql = """
             SELECT r.rel, r.from_id, r.to_id,
                    e.ns, e.key, e.title, e.updated_at,
                    CASE WHEN r.from_id = ? THEN 'outgoing' ELSE 'incoming' END AS direction
             FROM relations r
             JOIN entries e ON e.id = CASE WHEN r.from_id = ? THEN r.to_id ELSE r.from_id END
             WHERE r.from_id = ? OR r.to_id = ?
-            ORDER BY r.rel, e.ns, e.key
-            """,
-            (id, id, id, id),
-        ).fetchall()
+            ORDER BY r.rowid DESC
+        """
+        params = [id, id, id, id]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        return conn.execute(sql, params).fetchall()
+
+
+def get_relations(id: int) -> list[sqlite3.Row]:
+    return _relations_rows(id)
+
+
+def get_recent_relations(id: int, limit: int) -> tuple[list[sqlite3.Row], int]:
+    """Up to `limit` relations for an entry, most recently added first — see _relations_rows
+    for what "most recently added" actually means here. Returns (rows, total) where total
+    is the full relation count for 'N of M' hints."""
+    with get_conn() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM relations WHERE from_id = ? OR to_id = ?", (id, id)
+        ).fetchone()[0]
+    return _relations_rows(id, limit), total
+
+
+def replace_entry(id: int, old_string: str, new_string: str, replace_all: bool = False) -> dict:
+    """Targeted substring replacement within an entry's `data` field.
+    Raises EntryNotFound if id doesn't exist. Raises ValueError if old_string is empty,
+    not found in data, or matches more than once and replace_all is False.
+    Returns {'id', 'ns', 'key'}."""
+    if not old_string:
+        raise ValueError("old_string must not be empty")
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, ns, key, data FROM entries WHERE id = ?", (id,)
+        ).fetchone()
+        if not row:
+            raise EntryNotFound(id)
+        data = row["data"] or ""
+        count = data.count(old_string)
+        if count == 0:
+            raise ValueError(f"old_string not found in id={id}")
+        if count > 1 and not replace_all:
+            raise ValueError(
+                f"old_string matches {count} times in id={id} — pass replace_all=True "
+                "or include more surrounding context to match a single occurrence"
+            )
+        new_data = data.replace(old_string, new_string, -1 if replace_all else 1)
+        conn.execute("UPDATE entries SET data = ? WHERE id = ?", (new_data, id))
+    return {"id": id, "ns": row["ns"], "key": row["key"]}
 
 
 def delete_entry(id: int) -> bool:
