@@ -103,10 +103,14 @@ def search(
     limit: int = 10,
     offset: int = 0,
 ) -> str:
-    """Full-text search over entries using FTS5/BM25. Searches title, description, tags, and data.
-    Optionally filter by ns prefix. FTS5 operators AND, OR, NOT work as-is. Wrap query in double quotes for strict phrase search — special characters (dots, hyphens, etc.) become literals inside quotes, e.g. "127.0.0.1"."""
+    """FTS5/BM25 full-text search over title, description, tags, data. Optional ns prefix filter.
+    Query is raw FTS5 syntax (AND/OR/NOT, "phrases", prefix*, col:term); hyphenated/dotted
+    words (read-only, 127.0.0.1) are auto-quoted. Invalid syntax returns "Search failed: ..." text."""
     limit = min(limit, 100)
-    rows = queries.search_entries(query, ns, limit, offset)
+    try:
+        rows = queries.search_entries(query, ns, limit, offset)
+    except Exception as e:
+        return f"Search failed: {type(e).__name__}: {e}"
 
     if not rows:
         return "No results."
