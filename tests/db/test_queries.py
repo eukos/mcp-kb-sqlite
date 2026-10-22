@@ -130,6 +130,26 @@ def test_search_entries_matches_data_field():
     assert [r["id"] for r in rows] == [1]
 
 
+@pytest.mark.parametrize("raw, quoted", [
+    ("read-only", '"read-only"'),
+    ("127.0.0.1", '"127.0.0.1"'),
+    ("home/network user@host", '"home/network" "user@host"'),
+    ("database read-only mode", 'database "read-only" mode'),
+    ("a OR b-c", 'a OR "b-c"'),
+    ("read-on*", '"read-on"*'),
+    # left for FTS5 to interpret as written
+    ('"a read-only b" x', '"a read-only b" x'),
+    ("(alpha OR beta) c", "(alpha OR beta) c"),
+    ("title:foo", "title:foo"),
+    ("title:foo-bar", 'title:"foo-bar"'),
+    ("foo-", "foo-"),
+    ("-foo", "-foo"),
+    ("plain words", "plain words"),
+])
+def test_quote_fts_query(raw, quoted):
+    assert queries._quote_fts_query(raw) == quoted
+
+
 def test_replace_entry_keeps_fts_in_sync():
     queries.create_entry("proj/a", "k1", "Title", None, None, "before_term")
     assert [r["id"] for r in queries.search_entries("before_term", None, 10, 0)] == [1]

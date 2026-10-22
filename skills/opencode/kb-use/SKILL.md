@@ -17,7 +17,7 @@ Retrieve what's already known before searching the codebase. Work down the tiers
 - Search the relevant namespace. Namespaces match by prefix, so one word covers every subsystem under it.
 - **Search the current repo's namespace first**, even when the question is framed in terms of another service — knowledge is stored under the service that _owns_ the behavior, not the one that raised the question.
 - Reading across namespaces is always fine; only writes are guarded.
-- **Keep queries short** — FTS5 ANDs all terms, so long queries over-filter. Use 1–3 focused keywords and run separate searches for different angles rather than one long query. English only. FTS5 operators `AND`, `OR`, `NOT` work as-is. Special characters (`.`, `-`, `(`, `)`, etc.) are fine in plain queries. Wrap in double quotes for strict phrase search — `"127.0.0.1"` or `"project-name"` matches the exact string including the special character.
+- **Keep queries short** — FTS5 ANDs all terms, so long queries over-filter. Use 1–3 focused keywords and run separate searches for different angles rather than one long query. English only. FTS5 operators `AND`, `OR`, `NOT` work as-is. Hyphenated/dotted words (`project-name`, `127.0.0.1`) are auto-quoted; wrap other special characters in double quotes, e.g. `"foo,bar"`.
 - If the topic spans services, search again without the namespace filter, and check `_cross-service/`.
 - `title`, `description`, `tags`, and `data` are all FTS-indexed, but search only returns a snippet — a promising entry may hold much more, so fetch it in full (`get(id, include_data=True)`) before moving on.
 - Nothing found? Browse the namespace, then follow relations out from anything close.

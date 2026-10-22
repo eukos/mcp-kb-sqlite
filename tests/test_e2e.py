@@ -154,3 +154,17 @@ def test_delete_cascades_relations_end_to_end():
     assert delete(1) == "Deleted id=1"
 
     assert get_relations(2) == "No relations found for id=2"
+
+
+def test_search_compound_words_work_with_and_without_quotes():
+    save(ns="proj/a", key="k1", title="Replica setup", description="database read-only mode at 127.0.0.1")
+
+    for q in ("read-only", "127.0.0.1", "database read-only mode", '"read-only"'):
+        assert "proj/a/k1" in search(q), q
+
+
+def test_search_unsupported_syntax_returns_error_text():
+    save(ns="proj/a", key="k1", title="Brew gotchas")
+
+    result = search("foo(")
+    assert result.startswith("Search failed: OperationalError:")

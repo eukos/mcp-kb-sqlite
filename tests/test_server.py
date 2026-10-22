@@ -1,3 +1,4 @@
+import sqlite3
 from unittest.mock import patch
 
 from mcp_kb_sqlite.db import queries
@@ -195,6 +196,13 @@ def test_search_caps_limit_at_100():
     with patch("mcp_kb_sqlite.server.queries.search_entries", return_value=[]) as m:
         search("q", limit=500)
     assert m.call_args[0][2] == 100
+
+
+def test_search_error_is_returned_as_is_instead_of_raised():
+    err = sqlite3.OperationalError('fts5: syntax error near "("')
+    with patch("mcp_kb_sqlite.server.queries.search_entries", side_effect=err):
+        result = search("q")
+    assert result == 'Search failed: OperationalError: fts5: syntax error near "("'
 
 
 # ---------- list ----------

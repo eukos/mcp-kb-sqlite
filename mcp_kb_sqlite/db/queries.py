@@ -1,7 +1,12 @@
 import json
+import re
 import sqlite3
 
 from mcp_kb_sqlite.db import get_conn
+
+# Group 1: existing quoted phrase, passed through. Group 2: compound word joined by - . / @
+# (read-only, 127.0.0.1, home/network, user@host), quoted since FTS5 rejects it as a bareword.
+_FTS_COMPOUND = re.compile(r'("[^"]*")|\b(\w+(?:[-./@]\w+)+)\b')
 
 
 class EntryNotFound(Exception):
@@ -118,7 +123,14 @@ def get_entry(id: int) -> sqlite3.Row | None:
         ).fetchone()
 
 
+def _quote_fts_query(query: str) -> str:
+    """Quote simple compound words; leave parens, operators, prefix *, column filters and
+    existing phrases for FTS5 to interpret as written."""
+    return _FTS_COMPOUND.sub(lambda m: m.group(1) or f'"{m.group(2)}"', query)
+
+
 def search_entries(query: str, ns: str | None, limit: int, offset: int) -> list[sqlite3.Row]:
+    query = _quote_fts_query(query)
     ns_sql, ns_params = _ns_filter_sql(ns)
     with get_conn() as conn:
         # ns_sql is a fixed literal from _ns_filter_sql(), never caller input; the ns
